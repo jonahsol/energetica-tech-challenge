@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: enron-search
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:enron}
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:root}
+
+server:
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
