@@ -1,9 +1,13 @@
-import { useEffect, useState } from "react"
-import { createFileRoute, Link, useNavigate, useRouterState } from "@tanstack/react-router"
+import {
+  createFileRoute,
+  Link,
+  useNavigate,
+  useRouterState,
+} from "@tanstack/react-router"
 import { MailSearchIcon, SearchIcon } from "lucide-react"
+import { useEffect, useState } from "react"
 
 import { EnronMark } from "@/components/enron-mark"
-import { cn } from "@/lib/utils"
 import {
   Empty,
   EmptyHeader,
@@ -35,6 +39,7 @@ import {
   type Email,
 } from "@/lib/emails"
 import { searchEmails } from "@/lib/search"
+import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute("/")({
   validateSearch: validateDashboardSearch,
@@ -76,7 +81,7 @@ function SearchPanel({
   pending?: boolean
 }) {
   return (
-    <aside className="flex h-full w-[22rem] min-w-[22rem] max-w-[22rem] shrink-0 flex-col overflow-x-hidden border-r border-sidebar-border bg-sidebar">
+    <aside className="flex h-full w-[22rem] max-w-[22rem] min-w-[22rem] shrink-0 flex-col overflow-x-hidden border-r border-sidebar-border bg-sidebar">
       <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
         <EnronMark className="size-8 shrink-0" />
         <h1 className="min-w-0 text-lg font-semibold tracking-tight text-brand">
@@ -167,8 +172,7 @@ function Results({
   const isSearchLoading = useRouterState({
     select: (state) => {
       if (state.status !== "pending") return false
-      const nextQuery =
-        (state.location.search as { q?: string }).q ?? ""
+      const nextQuery = (state.location.search as { q?: string }).q ?? ""
       const currentQuery =
         (state.resolvedLocation?.search as { q?: string } | undefined)?.q ?? ""
       return nextQuery !== currentQuery
@@ -197,7 +201,7 @@ function Results({
   }
 
   return (
-    <ItemGroup className="w-full min-w-0">
+    <ItemGroup className="w-full min-w-0 gap-0">
       {emails.map((email, index) => (
         <ResultRow
           key={email.id}
@@ -224,7 +228,7 @@ function ResultRow({
       <Item
         variant="default"
         className={cn(
-          "w-full min-w-0 max-w-full items-start overflow-hidden rounded-none px-4 py-3 text-left",
+          "w-full max-w-full min-w-0 items-start overflow-hidden rounded-none px-4 py-5 text-left",
           selected && "bg-background [a]:hover:bg-background"
         )}
         render={
@@ -268,7 +272,9 @@ function EmailDetail({ email }: { email: Email }) {
         <div className="flex flex-col gap-1 text-sm text-muted-foreground">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <p>From: {email.sender}</p>
-            <time dateTime={email.date ?? undefined}>{formatEmailDate(email.date)}</time>
+            <time dateTime={email.date ?? undefined}>
+              {formatEmailDate(email.date)}
+            </time>
           </div>
           {email.xTo ? <p>To: {email.xTo}</p> : null}
           {email.xCc ? <p>Cc: {email.xCc}</p> : null}
