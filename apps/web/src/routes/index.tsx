@@ -72,7 +72,7 @@ function SearchPanel({
 }: {
   query?: string
   emails: Email[]
-  selectedId?: number
+  selectedId?: string
   pending?: boolean
 }) {
   return (
@@ -161,7 +161,7 @@ function Results({
 }: {
   query?: string
   emails: Email[]
-  selectedId?: number
+  selectedId?: string
   pending: boolean
 }) {
   const isSearchLoading = useRouterState({
@@ -241,7 +241,7 @@ function ResultRow({
         <ItemContent className="w-full min-w-0 gap-1">
           <ItemHeader className="w-full min-w-0 text-xs text-muted-foreground">
             <span className="min-w-0 truncate">From: {email.sender}</span>
-            <time dateTime={email.date} className="shrink-0">
+            <time dateTime={email.date ?? undefined} className="shrink-0">
               {formatEmailDate(email.date)}
             </time>
           </ItemHeader>
@@ -265,9 +265,14 @@ function EmailDetail({ email }: { email: Email }) {
         <h2 className="text-2xl font-semibold tracking-tight">
           {email.subject || "(no subject)"}
         </h2>
-        <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm text-muted-foreground">
-          <p>From: {email.sender}</p>
-          <time dateTime={email.date}>{formatEmailDate(email.date)}</time>
+        <div className="flex flex-col gap-1 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p>From: {email.sender}</p>
+            <time dateTime={email.date ?? undefined}>{formatEmailDate(email.date)}</time>
+          </div>
+          {email.xTo ? <p>To: {email.xTo}</p> : null}
+          {email.xCc ? <p>Cc: {email.xCc}</p> : null}
+          {email.xBcc ? <p>Bcc: {email.xBcc}</p> : null}
         </div>
         <Separator />
         <p className="text-sm leading-relaxed whitespace-pre-wrap">

@@ -28,8 +28,11 @@ class SearchControllerTest {
 		`when`(searchService.query("gas contract")).thenReturn(
 			listOf(
 				SearchResult(
-					id = 234679,
+					id = "allen-p/_sent_mail/1.",
 					sender = "gerald.nemec@enron.com",
+					xTo = "Tim Belden",
+					xCc = null,
+					xBcc = null,
 					date = Instant.parse("2001-05-16T13:30:00Z"),
 					subject = "IT Contract",
 					body = "Please review the gas contract.",
@@ -45,8 +48,11 @@ class SearchControllerTest {
 			status { isOk() }
 			content { contentTypeCompatibleWith(MediaType.APPLICATION_JSON) }
 			jsonPath("$.length()") { value(1) }
-			jsonPath("$[0].id") { value(234679) }
+			jsonPath("$[0].id") { value("allen-p/_sent_mail/1.") }
 			jsonPath("$[0].sender") { value("gerald.nemec@enron.com") }
+			jsonPath("$[0].xTo") { value("Tim Belden") }
+			jsonPath("$[0].xCc") { value(null) }
+			jsonPath("$[0].xBcc") { value(null) }
 			jsonPath("$[0].date") { value("2001-05-16T13:30:00Z") }
 			jsonPath("$[0].subject") { value("IT Contract") }
 			jsonPath("$[0].body") { value("Please review the gas contract.") }

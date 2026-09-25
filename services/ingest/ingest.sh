@@ -1,7 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
-docker exec -i enron-mysql \
-  mysql -uroot -proot enron < enron-mysqldump_v5.sql
-
-docker exec -i enron-mysql \
-  mysql -uroot -proot enron < fts-init.sql
+cd "$(dirname "$0")/../.."
+./gradlew :services:ingest:run
