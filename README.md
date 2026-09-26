@@ -1,122 +1,216 @@
-# Enron email search
+# Enron Email Search
 
-Search the Enron mailbox with PostgreSQL full-text search. A run-once ingest job streams `emails.csv` into Postgres. The API resolves misspelled keywords against a term vocabulary, then looks up documents with a `tsvector` index.
+[Energetica](https://energetica.io/) technical challenge — a search tool for the Enron email dataset. The PoC system acts allows typing keywords (with possible mispellings) and get back matching emails.
 
-## Architecture
+## Demo
 
-```text
-emails.csv
-    ↓
-streaming CSV parser
-    ↓
-MIME parser
-    ↓
-PostgreSQL
-    ├── emails + tsvector
-    └── search_terms + pg_trgm
-              ↑
-              │ fuzzy term resolution
-              │
-HTTP API ─────┘
+[Watch the loom walkthrough]()
+
+## Technology
+
+### Frontend
+
+- React
+- TanStack Start SSR
+- TypeScript
+- Tailwind
+- shadcn/ui
+
+### Backend
+
+- Kotlin
+- Postgresql
+    - Full-text search (tsvector / tsquery)
+    - pg_trgm for fuzzy term matching
+- Spring Boot
+- JDBC
+
+### Infrastructure
+
+- Docker Compose
+
+## Running Locally
+
+### Prerequisites
+
+- Java 21
+- Docker
+- Bun
+
+### Running
+
+1. Start PostgreSQL:
+
 ```
-
-```text
-                    ┌──────────────┐
-                    │  PostgreSQL  │
-                    │    + FTS     │
-                    │    + pg_trgm │
-                    └──────▲───────┘
-                           │
-              ┌────────────┴────────────┐
-              │                         │
-       ┌──────┴──────┐           ┌──────┴──────┐
-       │     API     │           │    ingest   │
-       │   service   │           │   run once  │
-       └─────────────┘           └─────────────┘
-```
-
-Ingest reads each CSV row, parses the raw MIME message, and batch-inserts canonical fields plus the original message. PostgreSQL maintains `search_vector` as a stored generated column: subject at weight A, body at weight B. The indexed text is capped below PostgreSQL's 1 MB `to_tsvector` limit. `body` and `raw_message` keep the full original text. After each batch, new lexemes are inserted into `search_terms` with `ON CONFLICT DO NOTHING`.
-
-Search stays split across HTTP, application, and infrastructure code:
-
-```text
-HTTP request
-    ↓
-SearchService
-    ↓
-PostgresSearchRepository
-    ↓
-PostgreSQL tsvector/tsquery
-```
-
-`POST /enron-data/search` accepts `{"searchTerm":"gas contract"}` and returns `id`, `sender`, `date`, `subject`, `body`, and `score`. The `id` is the dataset file path.
-
-## Why PostgreSQL?
-
-PostgreSQL covers this challenge in one database:
-
-- inverted full-text indexing through `tsvector` and a GIN index
-- `tsquery` for keyword and boolean lookup
-- `pg_trgm` for similarity matching
-- an indexed vocabulary for fuzzy term lookup
-- one operational database for ingest and search
-
-The text search configuration is `simple`. It lowercases and splits tokens, and it does not stem or drop stop words, so the vocabulary lexemes stay aligned with the search vector. Subject matches are weighted above body matches.
-
-A dedicated search engine such as Lucene or OpenSearch is a better evolution once the corpus reaches very large or petabyte scale. Those systems split indexing, sharding, and query serving from the system of record. For this mailbox, PostgreSQL keeps indexing and retrieval in one place without a second cluster.
-
-## Why a vocabulary?
-
-`pg_trgm` answers “which term did the user probably mean?”. It runs against `search_terms`, not against every email body. Exact terms win. A term of at least four characters can fall back to the closest trigram match above the similarity threshold.
-
-PostgreSQL full-text search then answers “which documents contain that term?”. The GIN index on `search_vector` does the document retrieval. Fuzzy matching never scans the mailbox.
-
-`gas contract` is an AND of two keywords, so the words may appear in any order and do not need to be a phrase. `gas AND contract` and `gas OR contract` use the same query tree. `AND` binds more tightly than `OR`.
-
-## Why streaming ingestion?
-
-The search process has to stay viable with a small JVM heap, about 256 MB. The CSV is hundreds of megabytes and the `message` field is quoted and multiline. Ingest uses Apache Commons CSV to stream records and Apache Mime4j to parse one message at a time. Rows are inserted in bounded batches (`BATCH_SIZE`, default 50) and then discarded. Vocabulary terms are written from the rows just inserted, not accumulated in a set. The `run` task sets `-Xmx256m`.
-
-## Local workflow
-
-Start PostgreSQL:
-
-```bash
 docker compose up -d postgres
 ```
 
-The database is `enron`, with user and password `enron`, published on port 5432. Data is stored in the `postgres-data` volume, so it survives container restarts. The first startup applies `services/db/schema.sql`, which creates `pg_trgm`, the tables, the generated `search_vector`, and both indexes. Ingest and the API also apply that script on startup.
+2. Ingest the dataset:
 
-Connection settings are environment variables for both processes:
+Download and place [the Kaggle emails.csv](https://www.kaggle.com/datasets/wcukierski/enron-email-dataset/data) file at `services/ingest/emails.csv`.
 
-```text
-DB_HOST      default localhost
-DB_PORT      default 5432
-DB_NAME      default enron
-DB_USER      default enron
-DB_PASSWORD  default enron
+Alternatively, set INGEST_CSV to the location of the file.
+
+Run the ingestion job:
+
 ```
-
-Ingest also accepts `INGEST_CSV` and `BATCH_SIZE`.
-
-Load the mailbox. This process exits when the CSV has been written:
-
-```bash
 ./gradlew :services:ingest:run
 ```
 
-Start the API:
+The ingestion process reads the CSV as a stream, parses each MIME message, and writes the emails to PostgreSQL in bounded batches. The process exits once ingestion is complete. This took a few minutes on my M3 mac.
 
-```bash
+The ingestion task runs with a 256 MB JVM heap to satisfy the challenge constraint.
+
+3. Start the API
+
+```
 ./gradlew :services:api:bootRun
 ```
 
-The web app reads `ENRON_API_URL` (default `http://localhost:8080`).
+The API runs on port 8080.
 
-## Tests
+4. Start the frontend
 
-```bash
-./gradlew test
+```
+cd apps/web
+bun install
+bun run dev
 ```
 
-Ingest tests cover multiline CSV fields, commas inside messages, MIME extraction, bounded batches, and duplicate vocabulary rows. API tests cover keyword order, ranking, misspelling resolution, full-text lookup, rejected blank queries, and parameterized SQL.
+The frontend runs on port 3000 and connects to the API at http://localhost:8080 by default.
+
+## Technical Overview
+
+The system separates ingest from search, as shown in the following diagram:
+
+![primary user flow and supporting system architecture](./docs/screenshots/systems_diagram.png)
+
+### Ingest
+
+[The Kaggle dataset](https://www.kaggle.com/datasets/wcukierski/enron-email-dataset/data) is a CSV containning columns `file` and `message`, where `message` is the original MIME email.
+
+The CSV is processed as a stream by `EmailCsvReader`. Each record is then parsed as MIME by `MimeEmailParser` and written to PostgreSQL by `EmailBatchWriter` as part of a batch. The `file` value is used as the email identifier.
+
+### Full-text search
+
+PostgreSQL's full-text search is used for document retrieval.
+
+A generated tsvector is stored for each email and indexed using GIN. The subject and body are indexed with different weights so that matches in the subject contribute more strongly to the result rank.
+
+The simple text-search configuration is used rather than English stemming. This keeps terms such as names, project names and other domain-specific words intact.
+
+Search ranking uses PostgreSQL's ts_rank_cd.
+
+### Misspelling handling
+
+Misspellings are resolved before searching the email corpus.
+
+The system maintains a search_terms vocabulary containing terms extracted from the indexed text. When a search term is received:
+
+An exact vocabulary match is preferred.
+For terms of at least four characters, pg_trgm is used to find a sufficiently similar vocabulary term.
+If no suitable term can be found, the term does not contribute to the search.
+
+This keeps fuzzy matching restricted to the vocabulary rather than performing trigram matching across the email bodies.
+
+For example:
+
+contrcat -> search_terms -> contract -> full-text search
+
+The fuzzy-match threshold is currently 0.35.
+
+### Search expressions
+
+The search input is parsed into a small expression tree containing:
+
+Term
+And
+Or
+
+Plain keywords are treated as an AND expression:
+
+gas contract
+
+is equivalent to:
+
+gas AND contract
+
+AND binds more tightly than OR:
+
+gas OR oil AND contract
+
+is interpreted as:
+
+gas OR (oil AND contract)
+
+The resulting expression is compiled into a parameterized PostgreSQL tsquery.
+
+### Result deduplication
+
+The same email can appear in multiple mailbox locations in the dataset.
+
+Results are therefore deduplicated using the email's Message-ID where available, falling back to the dataset file ID when it is not.
+
+When multiple copies exist, the highest-ranked copy is retained.
+
+## Handling Larger Datasets
+
+The current implementation is designed around the Kaggle dataset and the 256MB JVM heap constraint.
+
+The ingestion process loads bounded batches from the CSV into memory.
+
+The API delegates search to PostgreSQL's indexes.
+
+For a substantially larger, the same separation between raw data, indexing and query handling provides a basis for scaling the system.
+
+The main limitation would eventually become the size and operational requirements of the PostgreSQL database and its indexes. The search index and underlying email storage could be distributed across multiple nodes.
+
+Alternative solutions such as Lucene, OpenSearch and ElasticSearch could also be considered for larger datasets.
+
+## Scope Decisions
+
+The implementation focuses on the core requirements of the challenge:
+
+- Streaming ingestion of the supplied CSV dataset.
+- MIME email parsing.
+- PostgreSQL-backed full-text search.
+- Misspelling resolution using pg_trgm.
+- Keyword searches in any order.
+- AND / OR search expressions.
+- Ranked search results.
+- Deduplication of repeated copies of the same email.
+- A REST API and simple search UI.
+
+The following are intentionally outside the current scope:
+
+- Related or neighbouring emails.
+- Email attachments.
+- Phrase and proximity searches.
+- Highlighted search snippets.
+- Stemming and synonym support.
+- Resumable ingestion.
+- Distributed search.
+- Authentication and authorisation.
+- Advanced result pagination.
+
+These could be added independently without changing the basic separation between ingestion, search parsing, term resolution and document retrieval.
+
+## Testing
+
+The test suite covers the main ingestion and search behaviours, including:
+
+- Multiline CSV fields.
+- MIME extraction.
+- Bounded ingestion batches.
+- Duplicate vocabulary terms.
+- Keyword ordering.
+- AND / OR expressions.
+- Search ranking.
+- Misspelling resolution.
+- Full-text lookup.
+- Blank search validation.
+- Parameterized database queries.
+
+Run the tests with:
+
+./gradlew test
