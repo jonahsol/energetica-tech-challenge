@@ -18,5 +18,58 @@ services:
             timeout: 5s
             retries: 20
 
+    api:
+        build:
+            context: .
+            dockerfile: services/api/Dockerfile
+        container_name: enron-api
+        environment:
+            DB_HOST: postgres
+            DB_PORT: "5432"
+            DB_NAME: ${DB_NAME:-enron}
+            DB_USER: ${DB_USER:-enron}
+            DB_PASSWORD: ${DB_PASSWORD:-enron}
+        ports:
+            - "8080:8080"
+        depends_on:
+            postgres:
+                condition: service_healthy
+
+    ingest:
+        build:
+            context: .
+            dockerfile: services/ingest/Dockerfile
+        container_name: enron-ingest
+        environment:
+            DB_HOST: postgres
+            DB_PORT: "5432"
+            DB_NAME: ${DB_NAME:-enron}
+            DB_USER: ${DB_USER:-enron}
+            DB_PASSWORD: ${DB_PASSWORD:-enron}
+            INGEST_CSV: /data/emails.csv
+        volumes:
+            - type: bind
+              source: ./services/ingest/emails.csv
+              target: /data/emails.csv
+              read_only: true
+              bind:
+                  create_host_path: false
+        depends_on:
+            postgres:
+                condition: service_healthy
+
+    web:
+        build:
+            context: ./apps/web
+        container_name: enron-web
+        environment:
+            ENRON_API_URL: http://api:8080
+            PORT: "3000"
+            HOST: 0.0.0.0
+        ports:
+            - "3000:3000"
+        depends_on:
+            - api
+
 volumes:
     postgres-data:

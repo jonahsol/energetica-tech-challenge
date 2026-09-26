@@ -18,6 +18,7 @@ repositories {
 
 application {
 	mainClass.set("com.energetica.enron.ingest.IngestApplicationKt")
+	applicationDefaultJvmArgs = listOf("-Xmx256m")
 }
 
 val schemaFile = project.file("../db/schema.sql")
@@ -50,6 +51,3 @@ tasks.withType<Test> {
 	useJUnitPlatform()
 }
 
-tasks.named<JavaExec>("run") {
-	jvmArgs("-Xmx256m")
-}

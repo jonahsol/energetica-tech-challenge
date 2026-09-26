@@ -17,6 +17,8 @@ class IngestApplication(
             // Apply the schema to the database
 			SchemaMigrator().apply(connection, schema)
 			connection.autoCommit = false
+
+            log.info("Running ingest pipeline")
    
             // Run the ingest pipeline
 			val stats = IngestPipeline(
