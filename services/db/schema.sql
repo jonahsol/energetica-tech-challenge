@@ -6,6 +6,10 @@
 -- Subject is weight A and body is weight B, so a subject hit outranks a body-only hit.
 -- to_tsvector rejects input longer than 1,048,575 bytes. bounded_search_text keeps the
 -- indexed prefix under that limit. body and raw_message still store the full text.
+--
+-- The same message is stored once per mailbox folder, and each copy has its own
+-- generated Message-ID. content_key hashes the mailbox, sender, date, subject, and
+-- body so ingest can keep the first copy and skip the others.
 
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
@@ -19,6 +23,37 @@ AS $$
         WHEN octet_length(coalesce(value, '')) <= 1000000 THEN coalesce(value, '')
         ELSE left(value, 250000)
     END
+$$;
+
+-- Mailbox is the first path segment of id. Date is microseconds since epoch so the
+-- text does not depend on DateStyle. Message-ID and X-Folder are excluded because
+-- those are what change between folder copies.
+CREATE OR REPLACE FUNCTION email_content_key(
+    mailbox_id text,
+    sender text,
+    sent_at timestamptz,
+    subject text,
+    body text
+)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+AS $$
+    SELECT md5(
+        split_part(coalesce(mailbox_id, ''), '/', 1)
+        || chr(10)
+        || coalesce(sender, '')
+        || chr(10)
+        || CASE
+            WHEN sent_at IS NULL THEN ''
+            ELSE ((extract(epoch FROM sent_at) * 1000000)::bigint)::text
+        END
+        || chr(10)
+        || coalesce(subject, '')
+        || chr(10)
+        || coalesce(body, '')
+    )
 $$;
 
 CREATE TABLE IF NOT EXISTS emails (
@@ -35,42 +70,16 @@ CREATE TABLE IF NOT EXISTS emails (
     subject TEXT,
     body TEXT,
     raw_message TEXT,
+    content_key TEXT GENERATED ALWAYS AS (
+        email_content_key(id, sender, date, subject, body)
+    ) STORED NOT NULL,
     search_vector TSVECTOR GENERATED ALWAYS AS (
         setweight(to_tsvector('simple', bounded_search_text(subject)), 'A') ||
         setweight(to_tsvector('simple', bounded_search_text(body)), 'B')
     ) STORED NOT NULL
 );
 
-ALTER TABLE emails ADD COLUMN IF NOT EXISTS x_to TEXT;
-ALTER TABLE emails ADD COLUMN IF NOT EXISTS x_cc TEXT;
-ALTER TABLE emails ADD COLUMN IF NOT EXISTS x_bcc TEXT;
-
--- Replace an older generated column that indexed the full body.
-DO $$
-DECLARE
-    expr text;
-BEGIN
-    SELECT pg_get_expr(definition.adbin, definition.adrelid)
-    INTO expr
-    FROM pg_attrdef AS definition
-    JOIN pg_attribute AS attribute
-      ON attribute.attrelid = definition.adrelid
-     AND attribute.attnum = definition.adnum
-    JOIN pg_class AS relation ON relation.oid = attribute.attrelid
-    WHERE relation.relname = 'emails'
-      AND attribute.attname = 'search_vector';
-
-    IF expr IS NOT NULL AND position('bounded_search_text' IN expr) = 0 THEN
-        DROP INDEX IF EXISTS idx_emails_search_vector;
-        ALTER TABLE emails DROP COLUMN search_vector;
-        ALTER TABLE emails ADD COLUMN search_vector tsvector
-            GENERATED ALWAYS AS (
-                setweight(to_tsvector('simple', bounded_search_text(subject)), 'A') ||
-                setweight(to_tsvector('simple', bounded_search_text(body)), 'B')
-            ) STORED NOT NULL;
-    END IF;
-END
-$$;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_emails_content_key ON emails (content_key);
 
 CREATE INDEX IF NOT EXISTS idx_emails_search_vector
     ON emails

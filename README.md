@@ -147,11 +147,11 @@ The resulting expression is compiled into a parameterized PostgreSQL tsquery.
 
 ### Result deduplication
 
-The same email can appear in multiple mailbox locations in the dataset.
+The same message is often stored in more than one folder of a mailbox, with a different file id and a different generated Message-ID for each copy.
 
-Results are therefore deduplicated using the email's Message-ID where available, falling back to the dataset file ID when it is not.
+Ingest keeps one row per mailbox and message. The key hashes the mailbox, sender, date, subject, and body. The first copy in the CSV is inserted, and later copies are skipped. A message filed under two employees is kept for each mailbox.
 
-When multiple copies exist, the highest-ranked copy is retained.
+When stored rows still share a Message-ID, search keeps the highest-ranked one.
 
 ## Handling Larger Datasets
 

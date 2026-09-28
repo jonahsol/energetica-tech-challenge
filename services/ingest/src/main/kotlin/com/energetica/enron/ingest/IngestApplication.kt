@@ -39,7 +39,7 @@ class IngestApplication(
 				stats.written,
 				stats.failed,
 			)
-			if (stats.written == 0) {
+			if (stats.failed == stats.read) {
 				throw IllegalStateException("Ingest wrote no emails")
 			}
 		}

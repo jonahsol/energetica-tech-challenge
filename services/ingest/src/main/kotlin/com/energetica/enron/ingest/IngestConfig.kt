@@ -19,7 +19,7 @@ data class IngestConfig(
 			val password = env["DB_PASSWORD"] ?: "enron"
 			val batchSize = env["BATCH_SIZE"]?.toIntOrNull()?.takeIf { it > 0 } ?: 50
 			return IngestConfig(
-				jdbcUrl = "jdbc:postgresql://$host:$port/$name?reWriteBatchedInserts=true",
+				jdbcUrl = "jdbc:postgresql://$host:$port/$name",
 				user = user,
 				password = password,
 				csvPath = resolveCsv(env),
